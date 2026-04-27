@@ -8,7 +8,7 @@ This system extends **PawPal+ (Module 2 Project)** — a Streamlit app that help
 
 ## What's new in the applied-AI version
 
-A new **Pet Care Advisor** is integrated into the same Streamlit app. It answers natural-language pet care questions using:
+A new **Pet Care Advisor** is integrated into the same Streamlit app, powered by OpenAI's `gpt-4o-mini` for generation and `text-embedding-3-small` for retrieval. It answers natural-language pet care questions using:
 
 - **Multi-source retrieval-augmented generation (RAG)** over a curated knowledge base *and* the user's own pets/tasks.
 - **A self-critique guardrail** — every draft answer is reviewed by a second model pass that checks for groundedness, safety, and on-topic-ness before it is shown.
@@ -24,13 +24,13 @@ The diagram source is in [`assets/architecture.mmd`](assets/architecture.mmd) (M
 ### Data flow
 
 1. **Input.** The user types a question into the Streamlit Pet Care Advisor.
-2. **Embedding.** The question is embedded with Gemini `gemini-embedding-001`.
+2. **Embedding.** The question is embedded with OpenAI `text-embedding-3-small`.
 3. **Multi-source retrieval.** Cosine similarity is computed against:
    - The KB corpus: 7 curated markdown documents in `knowledge/` (exercise, feeding, kittens, puppies, grooming, cat care, safety).
    - A personal corpus: a per-pet snippet derived from the user's `Owner` / `Pet` / `Task` data.
-4. **Confidence check.** If the top similarity is below `0.55`, the system short-circuits to an honest refusal.
-5. **Generation.** The top chunks plus the question are sent to `gemini-2.5-flash` with a strict system prompt: answer only from context, redirect medical concerns to a vet, cite sources.
-6. **Self-critique.** The draft, retrieved context, and original question are sent to a second `gemini-2.5-flash` invocation acting as a strict reviewer (`PASS` / `FAIL` plus reason).
+4. **Confidence check.** If the top similarity is below `0.35`, the system short-circuits to an honest refusal. (The threshold is calibrated to `text-embedding-3-small`, whose cosine scores run lower than other embedding families.)
+5. **Generation.** The top chunks plus the question are sent to `gpt-4o-mini` with a strict system prompt: answer only from context, redirect medical concerns to a vet, cite sources.
+6. **Self-critique.** The draft, retrieved context, and original question are sent to a second `gpt-4o-mini` invocation acting as a strict reviewer (`PASS` / `FAIL` plus reason).
 7. **Output.** The UI shows the answer, the retrieved sources, and the critic's verdict.
 
 The deterministic scheduler from the original PawPal+ is unchanged and runs alongside the advisor. The advisor reads the live `Owner` object (so its personalized retrieval reflects the user's current pets and tasks), but it does not modify the schedule.
@@ -49,10 +49,10 @@ source .venv/bin/activate            # Windows: .venv\Scripts\activate
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Configure your Gemini API key
+# 4. Configure your OpenAI API key
 cp .env.example .env
-# Edit .env and set GEMINI_API_KEY=<your_key>
-# Get a key at https://aistudio.google.com/apikey
+# Edit .env and set OPENAI_API_KEY=<your_key>
+# Get a key at https://platform.openai.com/api-keys (requires billing set up)
 ```
 
 ## Running the system
@@ -107,7 +107,7 @@ python -m pytest
 >
 > **A:** I don't have reliable information on that in my pet care guides. I'd recommend asking a licensed veterinarian for guidance specific to your pet.
 >
-> **Why:** the top retrieved chunk's similarity was 0.530, below the 0.55 confidence threshold. The system did not call the generator at all — it short-circuited to refusal.
+> **Why:** the top retrieved chunk's similarity was 0.017, well below the 0.35 confidence threshold. The system did not call the generator at all — it short-circuited to refusal.
 
 ## Reliability and evaluation
 
@@ -121,7 +121,7 @@ python -m pytest
 | `vet_redirect` | Safety scenarios mention a vet or poison hotline. |
 | `critic_pass` | The self-critic accepted the draft. |
 
-**Latest run:** **6 / 6 scenarios passed; every check at 100 %.** A retry-with-backoff layer handles Gemini's free-tier rate limit (5 requests / minute on `gemini-2.5-flash`); the harness throttles between scenarios to keep within the per-day quota.
+**Latest run:** **6 / 6 scenarios passed; every check at 100 %.** A retry-with-backoff layer handles OpenAI rate limits, though tier-1 quotas on `gpt-4o-mini` are generous enough that the harness rarely needs to wait.
 
 The scheduler also has 20 unit tests in `tests/` (run with `python -m pytest`) covering priority sorting, time-budget enforcement, conflict detection, recurring tasks, and edge cases like empty pets and out-of-budget tasks.
 

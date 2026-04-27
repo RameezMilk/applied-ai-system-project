@@ -15,10 +15,10 @@ flowchart TD
     end
 
     subgraph RAG["RAG Pipeline (rag.py)"]
-        Embed["Embedder<br/>gemini-embedding-001"]
+        Embed["Embedder<br/>text-embedding-3-small"]
         Retrieve["Retriever<br/>top-k cosine similarity"]
-        Generator["Generator<br/>gemini-2.5-flash"]
-        Critic["Self-Critic<br/>gemini-2.5-flash<br/>(grounded? safe? on-topic?)"]
+        Generator["Generator<br/>gpt-4o-mini"]
+        Critic["Self-Critic<br/>gpt-4o-mini<br/>(grounded? safe? on-topic?)"]
     end
 
     subgraph Sources["Knowledge Sources"]

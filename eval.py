@@ -19,9 +19,9 @@ from dataclasses import dataclass, field
 
 from rag import PetCareAdvisor
 
-# Delay between scenarios to stay under free-tier rate limits (5 req/min on
-# gemini-2.5-flash; each scenario costs up to 2 generative calls).
-INTER_SCENARIO_DELAY_S = 14
+# Small inter-scenario delay; OpenAI tier-1 rate limits are generous, but
+# keeping a small pause avoids burst contention.
+INTER_SCENARIO_DELAY_S = 1
 
 
 @dataclass
