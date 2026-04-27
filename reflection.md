@@ -128,3 +128,44 @@ know your design intent — it'll happily put the same logic in two places or ad
 you don't need. The most valuable skill was knowing when to say "no, that's redundant" and
 keeping the design clean. Using separate phases for design, implementation, and testing made
 it way easier to stay organized and catch bad suggestions before they became real problems.
+
+---
+
+## 6. Applied AI Extension — Pet Care Advisor (RAG)
+
+### a. What was added
+
+A retrieval-augmented Pet Care Advisor was integrated into the existing Streamlit app. It uses Gemini for embedding and generation, retrieves from two sources (a curated markdown knowledge base **and** the user's live pet/task data), and routes every draft answer through a second-pass self-critic before showing it to the user. A retrieval-confidence floor short-circuits low-similarity questions to an honest "ask a vet" refusal, and an evaluation harness scores the system on six fixed scenarios.
+
+### b. Limitations and biases
+
+- **The KB is small and US-centric.** It uses Fahrenheit, US poison-control phone numbers, and reflects the author's choices about which breeds to highlight. Owners outside the US and people with breeds not represented in the KB (e.g., reptiles, birds, exotics) will get refusals or shallow answers.
+- **Self-critique uses the same model family.** Gemini reviewing Gemini can share blind spots — a confidently-wrong draft may pass review. The retrieval-confidence threshold is a second line of defense, but it cannot catch a wrong answer that *is* well-supported by the retrieved chunks.
+- **The personalized corpus is shallow.** It currently encodes pet name, species, and tasks. It does not know the pet's age, weight, breed, or medical history, so personalization is limited.
+- **No persistence.** Pets and tasks live only in Streamlit session state, so personalized retrieval resets when the browser tab closes.
+
+### c. Misuse and prevention
+
+The advisor could be misused by an owner trying to substitute it for veterinary care — for example, asking it to diagnose symptoms or recommend medication doses. The system has two guardrails for this:
+
+1. The system prompt tells the model never to give emergency medical advice and to redirect any sign of distress to a licensed veterinarian.
+2. The `safety_emergencies` KB document explicitly enumerates the scenarios that demand a vet call, which the retriever surfaces for any safety-related query.
+
+If this were a real product, additional steps would be a stronger safety classifier ahead of retrieval, rate-limiting per user, and an explicit disclaimer the user must accept on first use.
+
+### d. What surprised me
+
+How much of the work was **gating**, not generation. The fluent answers were the easy part — Gemini produces those out of the box. The harder problem was deciding when *not* to answer: tuning the cosine-similarity threshold so a question about French capitals refuses while a question about a Maine Coon retrieves cleanly, designing the critic prompt so it is willing to disagree with its own draft, and writing eval scenarios that distinguish "right for the right reasons" from "right by accident." The system became more trustworthy when I added more places where it could refuse, not more places where it could speak.
+
+### e. AI collaboration on this extension — one helpful, one flawed
+
+**Helpful:** when designing the advisor I asked the AI for a multi-source retrieval pattern. It suggested embedding the user's pets/tasks as natural-language snippets so they could be ranked alongside KB documents in a single cosine similarity call, rather than maintaining two separate retrieval paths and merging results. This was a clean simplification I had not thought of, and it made the personalized retrieval almost free to add.
+
+**Flawed:** the AI initially proposed `models/text-embedding-004` as the embedding model. The Gemini API rejected it (404 — that ID is not currently available on the v1beta endpoint that the Python SDK targets). I had to query `genai.list_models()` and switch to `models/gemini-embedding-001` before anything worked. The lesson is that model IDs in AI-generated examples drift quickly out of date and must be verified against the live API rather than trusted on faith.
+
+### f. Future improvements
+
+- Replace the in-memory NumPy index with a persistent vector store so the KB does not have to be re-embedded on every cold start.
+- Expand the `Pet` model with age, breed, and weight, which would meaningfully improve personalization (e.g., "for *your* 4-month-old puppy, that means roughly 20 minutes twice a day").
+- Add a small adversarial eval set that constructs plausible-but-ungrounded answers and verifies the critic catches them — the current eval shows the critic passing every good answer but does not yet prove it can reject bad ones.
+- Let the advisor *propose* tasks back to the schedule (e.g., "I can add a 20-minute morning walk for Mochi at 7:00 — confirm?"), turning the read-only advisor into an opt-in agent with a human approval step.

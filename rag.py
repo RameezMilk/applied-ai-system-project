@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +22,7 @@ import numpy as np
 from dotenv import load_dotenv
 
 import google.generativeai as genai
+from google.api_core.exceptions import ResourceExhausted
 
 from pawpal_system import Owner
 
@@ -188,11 +191,23 @@ class PetCareAdvisor:
             for c in chunks
         )
 
+    def _call_with_retry(self, model: "genai.GenerativeModel", prompt: str) -> str:
+        """Call generate_content with one automatic retry on rate-limit."""
+        try:
+            return model.generate_content(prompt).text.strip()
+        except ResourceExhausted as e:
+            wait = 35
+            m = re.search(r"retry in ([\d.]+)s", str(e))
+            if m:
+                wait = min(int(float(m.group(1))) + 2, 60)
+            log.warning("Rate-limited; sleeping %ds before retry", wait)
+            time.sleep(wait)
+            return model.generate_content(prompt).text.strip()
+
     def _generate(self, question: str, context: str) -> str:
         model = genai.GenerativeModel(GEN_MODEL, system_instruction=SYSTEM_PROMPT)
         prompt = f"Context:\n{context}\n\nUser question: {question}\n\nAnswer:"
-        resp = model.generate_content(prompt)
-        return resp.text.strip()
+        return self._call_with_retry(model, prompt)
 
     def _critique(self, question: str, context: str, draft: str) -> tuple[bool, str]:
         """Second-pass self-critique. Returns (passed, reason)."""
@@ -202,7 +217,7 @@ class PetCareAdvisor:
             f"Retrieved context:\n{context}\n\n"
             f"Draft answer:\n{draft}\n"
         )
-        resp = model.generate_content(prompt).text.strip()
+        resp = self._call_with_retry(model, prompt)
         passed = "VERDICT: PASS" in resp.upper()
         reason = ""
         for line in resp.splitlines():

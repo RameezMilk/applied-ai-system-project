@@ -1,0 +1,58 @@
+flowchart TD
+    User([👤 User])
+
+    subgraph UI["Streamlit UI (app.py)"]
+        Owner_UI["Owner / Pet / Task forms"]
+        Sched_UI["Daily Schedule view"]
+        Advisor_UI["🤖 Pet Care Advisor input"]
+    end
+
+    subgraph Logic["Scheduling Logic (pawpal_system.py)"]
+        Owner["Owner"]
+        Pet["Pet"]
+        Task["Task"]
+        Schedule["Schedule<br/>generate_plan / detect_conflicts"]
+    end
+
+    subgraph RAG["RAG Pipeline (rag.py)"]
+        Embed["Embedder<br/>gemini-embedding-001"]
+        Retrieve["Retriever<br/>top-k cosine similarity"]
+        Generator["Generator<br/>gemini-2.5-flash"]
+        Critic["Self-Critic<br/>gemini-2.5-flash<br/>(grounded? safe? on-topic?)"]
+    end
+
+    subgraph Sources["Knowledge Sources"]
+        KB[(knowledge/*.md<br/>curated pet care guides)]
+        UserData[(User's pets &amp; tasks<br/>personalized corpus)]
+    end
+
+    subgraph Eval["Reliability (eval.py)"]
+        Harness["6 fixed scenarios<br/>groundedness · keywords ·<br/>vet-redirect · refusal · critic"]
+    end
+
+    User --> UI
+    Owner_UI --> Owner
+    Sched_UI --> Schedule
+    Schedule --> Owner
+    Owner --> Pet --> Task
+
+    Advisor_UI -->|question| Embed
+    Owner -.->|live pet data| UserData
+    KB --> Embed
+    UserData --> Embed
+    Embed --> Retrieve
+    Retrieve -->|context + question| Generator
+    Generator -->|draft| Critic
+    Critic -->|verdict + reason| Advisor_UI
+
+    Retrieve -.->|low similarity| Refusal["Honest refusal<br/>(see a vet)"]
+    Refusal --> Advisor_UI
+
+    Harness -.->|tests| RAG
+
+    classDef ai fill:#e1f5fe,stroke:#0288d1
+    classDef data fill:#fff3e0,stroke:#f57c00
+    classDef ui fill:#f3e5f5,stroke:#7b1fa2
+    class Embed,Generator,Critic ai
+    class KB,UserData data
+    class Owner_UI,Sched_UI,Advisor_UI ui

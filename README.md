@@ -1,66 +1,143 @@
-# PawPal+ (Module 2 Project)
+# PawPal+ — Applied AI System
 
-**PawPal+** is a Streamlit app that helps a pet owner plan daily care tasks for their pets. It considers priority, time, and how many minutes you actually have — then builds a smart schedule.
+> A pet care scheduling assistant that combines deterministic planning with a Retrieval-Augmented Generation (RAG) advisor for grounded, safety-aware pet care guidance.
 
-## Demo
+## Original project
 
-<a href="/course_images/ai110/pawpal_image.png" target="_blank"><img src='pawpal_image.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
+This system extends **PawPal+ (Module 2 Project)** — a Streamlit app that helps a pet owner plan daily care tasks for their pets. The original system manages pets and tasks, sorts them by priority and scheduled time, fits them within an available-time budget, detects scheduling conflicts, and generates recurring follow-ups for daily and weekly tasks. It is a fully deterministic scheduler with no AI in the planning loop.
 
-## Features
+## What's new in the applied-AI version
 
-- **Owner + pet management** — add pets, configure your available time for the day
-- **Task creation** — set title, duration, priority, scheduled time (HH:MM), date, and frequency (once / daily / weekly)
-- **Priority + time sorting** — the scheduler orders tasks by priority (high first), then by scheduled time within each level
-- **Time budget** — fits as many tasks as possible without exceeding your available minutes
-- **Filtering** — filter the task list by pet name or completion status
-- **Recurring tasks** — marking a daily or weekly task complete auto-creates the next occurrence
-- **Conflict detection** — flags a warning when multiple tasks are booked at the same time slot
-- **Mark complete** — complete tasks from the UI; recurring ones automatically roll forward
-- **Plan explanation** — expandable section explains why the schedule was built the way it was
+A new **Pet Care Advisor** is integrated into the same Streamlit app. It answers natural-language pet care questions using:
 
-## Final UML
+- **Multi-source retrieval-augmented generation (RAG)** over a curated knowledge base *and* the user's own pets/tasks.
+- **A self-critique guardrail** — every draft answer is reviewed by a second model pass that checks for groundedness, safety, and on-topic-ness before it is shown.
+- **A retrieval-confidence floor** — questions whose top retrieved chunk falls below a similarity threshold receive an honest refusal that redirects to a licensed veterinarian, instead of a hallucinated answer.
+- **An evaluation harness** that scores the advisor against fixed scenarios on five dimensions and prints a pass/fail summary.
 
-The final class diagram is in [`uml_final.md`](uml_final.md) (Mermaid format). Paste the contents into the [Mermaid Live Editor](https://mermaid.live) to render it.
+## Architecture
 
-Four classes: `Task`, `Pet`, `Owner`, and `Schedule`. Owner has Pets, Pets have Tasks, and Schedule pulls tasks from Owner's pets to build a prioritized, time-constrained plan.
+![Architecture](assets/architecture.png)
 
-## Testing PawPal+
+The diagram source is in [`assets/architecture.mmd`](assets/architecture.mmd) (Mermaid). Paste it into [Mermaid Live Editor](https://mermaid.live) to view or re-export.
 
-Run the test suite:
+### Data flow
 
-```bash
-python -m pytest
-```
+1. **Input.** The user types a question into the Streamlit Pet Care Advisor.
+2. **Embedding.** The question is embedded with Gemini `gemini-embedding-001`.
+3. **Multi-source retrieval.** Cosine similarity is computed against:
+   - The KB corpus: 7 curated markdown documents in `knowledge/` (exercise, feeding, kittens, puppies, grooming, cat care, safety).
+   - A personal corpus: a per-pet snippet derived from the user's `Owner` / `Pet` / `Task` data.
+4. **Confidence check.** If the top similarity is below `0.55`, the system short-circuits to an honest refusal.
+5. **Generation.** The top chunks plus the question are sent to `gemini-2.5-flash` with a strict system prompt: answer only from context, redirect medical concerns to a vet, cite sources.
+6. **Self-critique.** The draft, retrieved context, and original question are sent to a second `gemini-2.5-flash` invocation acting as a strict reviewer (`PASS` / `FAIL` plus reason).
+7. **Output.** The UI shows the answer, the retrieved sources, and the critic's verdict.
 
-20 tests covering:
+The deterministic scheduler from the original PawPal+ is unchanged and runs alongside the advisor. The advisor reads the live `Owner` object (so its personalized retrieval reflects the user's current pets and tasks), but it does not modify the schedule.
 
-- **Task basics** — completion status, recurring task generation (daily/weekly), one-time tasks returning no follow-up
-- **Pet management** — adding tasks increases the pet's task count
-- **Scheduling logic** — priority ordering, time budget constraints, excluding completed tasks, chronological sorting
-- **Filtering** — by pet name, by completion status, nonexistent pet returns empty
-- **Conflict detection** — same-time conflicts (same pet and cross-pet), no false positives when times differ
-- **Edge cases** — pet with no tasks, owner with no pets, tasks on wrong date, all tasks exceeding budget
-
-**Confidence Level: ⭐⭐⭐⭐ (4/5)** — happy paths and key edge cases are well covered. The main gap is overlap-based conflict detection (e.g., a 30-min task at 07:00 vs a task at 07:15) which we intentionally skip in favor of simplicity.
-
-## Getting started
-
-### Setup
+## Setup
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+# 1. Clone and enter the repo
+git clone <repo-url> pawpal-plus
+cd pawpal-plus
+
+# 2. Create a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate            # Windows: .venv\Scripts\activate
+
+# 3. Install dependencies
 pip install -r requirements.txt
+
+# 4. Configure your Gemini API key
+cp .env.example .env
+# Edit .env and set GEMINI_API_KEY=<your_key>
+# Get a key at https://aistudio.google.com/apikey
 ```
 
-### Run the app
+## Running the system
+
+### Streamlit app (full system)
 
 ```bash
 streamlit run app.py
 ```
 
-### Run tests
+Opens at `http://localhost:8501`. Add a pet, add a few tasks, generate a daily schedule, then scroll down to **🤖 Pet Care Advisor** to ask questions.
+
+### Evaluation harness
+
+```bash
+python eval.py
+```
+
+Runs 6 predefined scenarios and prints per-scenario verdicts plus a summary.
+
+### Unit tests (original scheduler)
 
 ```bash
 python -m pytest
 ```
+
+## Sample interactions
+
+### 1. In-scope question with retrieval and citation
+
+> **Q:** *How long should I walk a Husky?*
+>
+> **A:** Huskies are considered high-energy breeds and typically need 90 to 120 minutes of physical activity daily, as mentioned in the dog exercise guide. This should include vigorous activities like running, fetch, or off-leash play. Always provide water before and after exercise, and on hot days (above 80°F / 27°C), schedule walks for early morning or late evening to prevent paw burns and heatstroke.
+>
+> **Sources retrieved:** `dogs_exercise`, `puppies`, `dogs_feeding`
+>
+> **Critic verdict:** PASS — every claim is supported by retrieved context.
+
+### 2. Safety question — vet redirect
+
+> **Q:** *My dog ate chocolate, what should I do?*
+>
+> **A:** Chocolate is toxic to dogs and considered a common household hazard, per the pet safety and emergencies guide. If your dog has eaten chocolate, this is a suspected poisoning, which requires immediate veterinary attention. Please call your veterinarian right away or contact a pet poison hotline (ASPCA Animal Poison Control: 888-426-4435; Pet Poison Helpline: 855-764-7661). Do not wait.
+>
+> **Sources retrieved:** `safety_emergencies`, `dogs_feeding`, `puppies`
+>
+> **Critic verdict:** PASS — appropriately directs the user to professional veterinary help without giving medical advice.
+
+### 3. Out-of-scope question — honest refusal
+
+> **Q:** *What is the capital of France?*
+>
+> **A:** I don't have reliable information on that in my pet care guides. I'd recommend asking a licensed veterinarian for guidance specific to your pet.
+>
+> **Why:** the top retrieved chunk's similarity was 0.530, below the 0.55 confidence threshold. The system did not call the generator at all — it short-circuited to refusal.
+
+## Reliability and evaluation
+
+`eval.py` scores each scenario on five binary checks:
+
+| Check | What it measures |
+|---|---|
+| `refusal_correct` | The system refuses iff the question is out-of-scope. |
+| `groundedness` | At least one expected source appears in the retrieved set. |
+| `keywords` | The answer contains the expected facts (e.g., "90 to 120 min" for Husky exercise). |
+| `vet_redirect` | Safety scenarios mention a vet or poison hotline. |
+| `critic_pass` | The self-critic accepted the draft. |
+
+**Latest run:** **6 / 6 scenarios passed; every check at 100 %.** A retry-with-backoff layer handles Gemini's free-tier rate limit (5 requests / minute on `gemini-2.5-flash`); the harness throttles between scenarios to keep within the per-day quota.
+
+The scheduler also has 20 unit tests in `tests/` (run with `python -m pytest`) covering priority sorting, time-budget enforcement, conflict detection, recurring tasks, and edge cases like empty pets and out-of-budget tasks.
+
+## Design decisions and tradeoffs
+
+- **Whole-document chunks instead of sentence-level chunks.** Each KB document is short (≤ 30 lines) and topically coherent, so chunking by document keeps citations readable and retrieval simple. Sentence-level chunking would help on a larger corpus.
+- **In-memory NumPy index, no vector DB.** With 7 documents plus a handful of pet snippets, a NumPy cosine matrix is trivially fast and adds zero deployment complexity. A real product with thousands of docs would swap in FAISS or a managed store.
+- **Two-pass critique using the same model.** A separate critic prompt with strict pass/fail output is cheaper and simpler than swapping in a different model, and the prompts diverge enough that the critic is willing to disagree. Tradeoff: this is "self-critique," not multi-model agreement, so a fluent-but-wrong draft can still slip through. The retrieval-confidence floor is the second line of defense.
+- **Personalized retrieval is read-only.** The advisor reads the live `Owner` object but never writes to it. Letting the advisor mutate the schedule would be a much bigger reliability surface; we kept it out of scope for this iteration.
+
+## Reflection
+
+See [`reflection.md`](reflection.md) for the full reflection on AI collaboration, ethics, and limitations.
+
+## Demo walkthrough
+
+A Loom walkthrough demonstrating end-to-end use, the RAG advisor behavior, the self-critic, and the evaluation harness will be linked here:
+
+> **Loom:** *(link to be added)*
