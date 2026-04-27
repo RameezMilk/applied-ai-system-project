@@ -140,4 +140,4 @@ See [`reflection.md`](reflection.md) for the full reflection on AI collaboration
 
 A Loom walkthrough demonstrating end-to-end use, the RAG advisor behavior, the self-critic, and the evaluation harness will be linked here:
 
-> **Loom:** *(link to be added)*
+> **Loom:** https://www.loom.com/share/9d95a78c7d524ffc85cc0716adf396fb
