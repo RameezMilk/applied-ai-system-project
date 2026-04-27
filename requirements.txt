@@ -1,2 +1,5 @@
 streamlit>=1.30
 pytest>=7.0
+google-generativeai>=0.8
+numpy>=1.26
+python-dotenv>=1.0

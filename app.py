@@ -1,6 +1,7 @@
 import streamlit as st
 from datetime import date
 from pawpal_system import Pet, Task, Owner, Schedule
+from rag import PetCareAdvisor
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -214,3 +215,55 @@ if st.button("Generate schedule"):
             )
     else:
         st.warning("No incomplete tasks found for this date.")
+
+st.divider()
+
+# ── Pet Care Advisor (RAG) ──────────────────────────────
+st.subheader("🤖 Pet Care Advisor")
+st.caption(
+    "Ask a question about pet care. The advisor retrieves from a curated knowledge "
+    "base **and** your own pet/task data, then a second-pass critic reviews the answer "
+    "for groundedness and safety before it's shown."
+)
+
+
+@st.cache_resource(show_spinner="Loading pet care knowledge base…")
+def _get_advisor() -> PetCareAdvisor:
+    return PetCareAdvisor()
+
+
+try:
+    advisor = _get_advisor()
+    advisor_ready = True
+except Exception as e:
+    advisor = None
+    advisor_ready = False
+    st.error(f"Advisor unavailable: {e}")
+
+question = st.text_input(
+    "Your question",
+    value="",
+    placeholder="e.g., How long should I walk a Husky puppy?",
+    key="advisor_question",
+)
+
+if st.button("Ask the advisor", disabled=not advisor_ready):
+    if not question.strip():
+        st.warning("Please type a question first.")
+    else:
+        with st.spinner("Retrieving and reasoning…"):
+            result = advisor.ask(question, owner=owner)
+
+        st.markdown(f"**Answer:** {result['answer']}")
+
+        if result["sources"]:
+            st.caption("📚 Retrieved sources: " + ", ".join(f"`{s}`" for s in result["sources"]))
+
+        if result["low_confidence"]:
+            st.warning(
+                "⚠️ Low retrieval confidence — the question may be outside this assistant's scope."
+            )
+        elif result["critique_passed"]:
+            st.success(f"✅ Critic passed: {result['critique_reason']}")
+        else:
+            st.error(f"❌ Critic flagged this answer: {result['critique_reason']}")
