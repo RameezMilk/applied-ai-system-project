@@ -132,9 +132,10 @@ The scheduler also has 20 unit tests in `tests/` (run with `python -m pytest`) c
 - **Two-pass critique using the same model.** A separate critic prompt with strict pass/fail output is cheaper and simpler than swapping in a different model, and the prompts diverge enough that the critic is willing to disagree. Tradeoff: this is "self-critique," not multi-model agreement, so a fluent-but-wrong draft can still slip through. The retrieval-confidence floor is the second line of defense.
 - **Personalized retrieval is read-only.** The advisor reads the live `Owner` object but never writes to it. Letting the advisor mutate the schedule would be a much bigger reliability surface; we kept it out of scope for this iteration.
 
-## Reflection
+## Reflection and model card
 
-See [`reflection.md`](reflection.md) for the full reflection on AI collaboration, ethics, and limitations.
+- **[`model_card.md`](model_card.md)** — the canonical model card for this system: intended use, evaluation results, limitations, biases, ethical considerations, and AI-collaboration reflections (one helpful suggestion, one flawed suggestion).
+- **[`reflection.md`](reflection.md)** — the full development reflection, including the original Module 2 design notes and the applied-AI extension.
 
 ## Demo walkthrough
 
